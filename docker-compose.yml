@@ -1,0 +1,28 @@
+version: "2.3"
+services:
+  development:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    network_mode: "host"
+    environment:
+      - DISPLAY
+      - QT_X11_NO_MITSHM=1
+      - UID
+    
+    runtime: nvidia
+    volumes:
+      - /dev:/dev
+      - /lib/modules:/lib/modules
+      - /run/systemd/system:/run/systemd/system
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket
+      - /run/user/1000/gdm/Xauthority:/root/.Xauthority
+      - ./src:/home/CUDA
+    privileged: true
+    cap_add:
+      - ALL
+    ipc: host
+    tty: true
+    
+ 
