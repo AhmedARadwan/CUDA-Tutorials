@@ -1,12 +1,14 @@
 #include <iostream>
 #include <math.h>
 #include <stdio.h>
+#include <chrono>
 
 // Kernel function to add the elements of two arrays
 __global__ void add(int n, float *x, float *y)
 {
     int index = blockIdx.x * blockDim.x + threadIdx.x;
     int stride = blockDim.x * gridDim.x;
+    // printf("DEBUG: gridDim.x: %d\n", gridDim.x);
     // printf("DEBUG: index : %d, stride: %d\n", index, stride);
     for (int i = index; i < n; i += stride) y[i] = x[i] + y[i];
 }
@@ -26,18 +28,23 @@ int main(void)
         y[i] = 2.0f;
     }
 
+    
     // Run kernel on 1M elements on the GPU
-    int blockSize = 256;
+    int blockSize = 512;
     int numBlocks = (N + blockSize - 1) / blockSize;
+    auto startTime = std::chrono::high_resolution_clock::now();
     add<<<numBlocks, blockSize>>>(N, x, y);
 
     // Wait for GPU to finish before accessing on host
     cudaDeviceSynchronize();
+    auto endTime = std::chrono::high_resolution_clock::now();
+    double add_time = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count()/1000000.0;
 
     // Check for errors (all values should be 3.0f)
     float maxError = 0.0f;
     for (int i = 0; i < N; i++) maxError = fmax(maxError, fabs(y[i]-3.0f));
     std::cout << "Max error: " << maxError << std::endl;
+    std::cout << "Addition Duration: " << add_time << "\n";
 
     // Free memory
     cudaFree(x);

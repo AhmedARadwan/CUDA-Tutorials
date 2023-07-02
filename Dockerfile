@@ -44,6 +44,41 @@ RUN apt install -y libpcap-dev \
                    python \
                    libcgal-dev
 
+# Install ROS noetic on Ubuntu (http://wiki.ros.org/noetic/Installation/Ubuntu)
+ENV DEBIAN_FRONTEND noninteractive
+ENV ROS_DISTRO=melodic
+RUN sh -c 'echo "deb http://packages.ros.org/ros/ubuntu $(lsb_release -sc) main" > /etc/apt/sources.list.d/ros-latest.list'
+RUN curl -s https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | apt-key add -
+RUN apt-get update && apt-get install -y ros-${ROS_DISTRO}-desktop ros-${ROS_DISTRO}-velodyne-pointcloud
+RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> ~/.bashrc
+RUN apt update && apt install -y python3-catkin-tools \
+                                 python-rosdep \
+                                 python-rosinstall \
+                                 python-rosinstall-generator \
+                                 python-wstool \
+                                 build-essential
+
+# install debian pkgs
+RUN apt install -y ros-${ROS_DISTRO}-ros-numpy \
+                   ros-${ROS_DISTRO}-jsk-recognition-msgs \
+                   ros-${ROS_DISTRO}-autoware-msgs \
+                   ros-${ROS_DISTRO}-cv-bridge \
+                   ros-${ROS_DISTRO}-image-transport \
+                   ros-${ROS_DISTRO}-camera-info-manager \
+                   ros-${ROS_DISTRO}-tf2-sensor-msgs \
+                   ros-${ROS_DISTRO}-nmea-msgs \
+                   ros-${ROS_DISTRO}-diagnostic-updater \
+                   ros-${ROS_DISTRO}-roslint \
+                   ros-${ROS_DISTRO}-angles \
+                   ros-${ROS_DISTRO}-pcl-ros \
+                   ros-${ROS_DISTRO}-ros-numpy \
+                   ros-${ROS_DISTRO}-tf-conversions \
+                   ros-${ROS_DISTRO}-tf2-geometry-msgs \
+                   ros-${ROS_DISTRO}-rviz \
+                   ros-${ROS_DISTRO}-jsk-rviz-plugins
+
+
+
 ENV NVIDIA_VISIBLE_DEVICES \
     ${NVIDIA_VISIBLE_DEVICES:-all}
 ENV NVIDIA_DRIVER_CAPABILITIES \
