@@ -1,0 +1,29 @@
+<launch>
+    <!-- cloud cutter node -->
+    <node pkg="object_transformation" type="transform_objects_node" name="transform_objects_node" output="screen">
+    </node>
+
+    <!-- visualize objects before transformation -->
+    <node pkg="object_transformation" type="visualize_objects.py" name="vis_objects_before">
+        <remap from="/input" to="/tracking/vehicles"/>
+        <remap from="/debug/marker" to="/debug/marker"/>
+        <remap from="/debug/boxes" to="/debug/marker"/>
+
+    </node>
+
+    <!-- visualize objects after transformation -->
+    <node pkg="object_transformation" type="visualize_objects.py" name="vis_objects_after">
+        <remap from="/input" to="/tracking/vehicles/transformed"/>
+        <remap from="/debug/marker" to="/debug/marker/after"/>
+        <remap from="/debug/boxes" to="/debug/marker/after"/>
+    </node>
+
+    <!-- rosbag player -->
+    <node pkg="rosbag" type="play" name="player" args="$(find object_transformation)/sample/sample.bag -l"/>
+
+    <!-- visualization -->
+    <!-- <node type="rviz" name="rviz" pkg="rviz" args="-d $(find cloud_cutter)/rviz/rviz_config.rviz" /> -->
+
+
+
+</launch>
