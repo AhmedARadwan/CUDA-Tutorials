@@ -1,6 +1,6 @@
 <launch>
     <!-- cloud cutter node -->
-    <node pkg="object_transformation" type="transform_objects_node" name="transform_objects_node" output="screen">
+    <node pkg="object_transformation" type="transform_objects_cpu" name="transform_objects_cpu_node" output="screen">
     </node>
 
     <!-- visualize objects before transformation -->
@@ -19,7 +19,7 @@
     </node>
 
     <!-- rosbag player -->
-    <node pkg="rosbag" type="play" name="player" args="$(find object_transformation)/sample/sample.bag -l"/>
+    <node pkg="rosbag" type="play" name="player" args="$(find object_transformation)/sample/sample.bag -l --rate=1"/>
 
     <!-- visualization -->
     <!-- <node type="rviz" name="rviz" pkg="rviz" args="-d $(find cloud_cutter)/rviz/rviz_config.rviz" /> -->

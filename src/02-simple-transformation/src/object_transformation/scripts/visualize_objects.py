@@ -35,6 +35,7 @@ def callback(data):
             marker = Marker()
             marker.header = data.header
             marker.ns = "labels"
+            marker.lifetime = rospy.Duration(0.1)
             marker.id = i
             marker.type = Marker.TEXT_VIEW_FACING
             marker.action = Marker.ADD

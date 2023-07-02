@@ -1,53 +1,59 @@
 #include <ros/ros.h>
 #include <autoware_msgs/DetectedObjectArray.h>
+#include <chrono>
+#include <thrust/copy.h>
 
+struct Transformation {
+    double dx = 0.0;
+    double dy = 0.0;
+    double dz = 0.0;
+    double droll = 0.0;
+    double dpitch = 0.0;
+    double dyaw = 0.0;
+};
+
+struct Quaternion {
+    double w;
+    double x;
+    double y;
+    double z;
+};
 
 // CUDA transformation function
-__global__ void cudaTransformObject(autoware_msgs::DetectedObject* cuda_object_data, const float* transformation_matrix, int object_size)
-{
+__global__ void cudaTransformObject(autoware_msgs::DetectedObject* cuda_object_data, Transformation m_transformation, Quaternion dquaternion, int object_size) {
     int index = threadIdx.x;
-    // printf("DEBUG: index: %d, object_size: %d\n", index, object_size);
 
-    if (index < object_size)
-    {
+    if (index < object_size) {
         autoware_msgs::DetectedObject* object = &cuda_object_data[index];
 
-        // Extract position and orientation (quaternion)
-        float x = object->pose.position.x;
-        float y = object->pose.position.y;
-        float z = object->pose.position.z;
-        float qx = object->pose.orientation.x;
-        float qy = object->pose.orientation.y;
-        float qz = object->pose.orientation.z;
-        float qw = object->pose.orientation.w;
+        Quaternion quaternion;
+        quaternion.x = object->pose.orientation.x;
+        quaternion.y = object->pose.orientation.y;
+        quaternion.z = object->pose.orientation.z;
+        quaternion.w = object->pose.orientation.w;
 
-        // Apply transformation to position
-        float transformed_x = transformation_matrix[0] * x + transformation_matrix[1] * y + transformation_matrix[2] * z + transformation_matrix[3];
-        float transformed_y = transformation_matrix[4] * x + transformation_matrix[5] * y + transformation_matrix[6] * z + transformation_matrix[7];
-        float transformed_z = transformation_matrix[8] * x + transformation_matrix[9] * y + transformation_matrix[10] * z + transformation_matrix[11];
+        // Calculate new quaternion orientation
+        Quaternion T_quaternion;
 
-        // Apply transformation to quaternion orientation
-        float transformed_qx = transformation_matrix[0] * qx + transformation_matrix[1] * qy + transformation_matrix[2] * qz + transformation_matrix[3];
-        float transformed_qy = transformation_matrix[4] * qx + transformation_matrix[5] * qy + transformation_matrix[6] * qz + transformation_matrix[7];
-        float transformed_qz = transformation_matrix[8] * qx + transformation_matrix[9] * qy + transformation_matrix[10] * qz + transformation_matrix[11];
-        float transformed_qw = transformation_matrix[12] * qx + transformation_matrix[13] * qy + transformation_matrix[14] * qz + transformation_matrix[15] * qw;
+        T_quaternion.w = dquaternion.w * quaternion.w - dquaternion.x * quaternion.x - dquaternion.y * quaternion.y - dquaternion.z * quaternion.z;
+        T_quaternion.x = dquaternion.w * quaternion.x + dquaternion.x * quaternion.w + dquaternion.y * quaternion.z - dquaternion.z * quaternion.y;
+        T_quaternion.y = dquaternion.w * quaternion.y - dquaternion.x * quaternion.z + dquaternion.y * quaternion.w + dquaternion.z * quaternion.x;
+        T_quaternion.z = dquaternion.w * quaternion.z + dquaternion.x * quaternion.y - dquaternion.y * quaternion.x + dquaternion.z * quaternion.w;
 
         // Update transformed position and orientation (quaternion)
-        object->pose.position.x = transformed_x;
-        object->pose.position.y = transformed_y;
-        object->pose.position.z = transformed_z;
-        object->pose.orientation.x = transformed_qx;
-        object->pose.orientation.y = transformed_qy;
-        object->pose.orientation.z = transformed_qz;
-        object->pose.orientation.w = transformed_qw;
+        object->pose.position.x = object->pose.position.x + m_transformation.dx;
+        object->pose.position.y = object->pose.position.y + m_transformation.dy;
+        object->pose.position.z = object->pose.position.z + m_transformation.dz;
+        object->pose.orientation.x = T_quaternion.x;
+        object->pose.orientation.y = T_quaternion.y;
+        object->pose.orientation.z = T_quaternion.z;
+        object->pose.orientation.w = T_quaternion.w;
     }
 }
 
-class ObjectTransformer
-{
+class ObjectTransformer {
 public:
-    ObjectTransformer()
-    {
+    ObjectTransformer() {
         // Initialize CUDA device
         cudaDeviceProp deviceProp;
         cudaGetDeviceProperties(&deviceProp, 0);
@@ -61,57 +67,43 @@ public:
 
         // Advertise the output transformed object array topic
         transformed_array_pub_ = nh_.advertise<autoware_msgs::DetectedObjectArray>("/tracking/vehicles/transformed", 10);
-        
-        // Allocate host memory for the transformation matrix
-        cudaMallocHost(&host_transformation_matrix, 16 * sizeof(float));
 
-        // Modify host_transformation_matrix with your desired transformation values
-        // Translation values (x, y, z)
-        host_transformation_matrix[0] = 20.0;
-        host_transformation_matrix[1] = 0.0;
-        host_transformation_matrix[2] = 0.0;
+        m_transformation.dx = 45.0;
+        m_transformation.dy = -12.1;
+        m_transformation.dz = -0.3;
+        m_transformation.droll = 0.07;
+        m_transformation.dpitch = -0.01;
+        m_transformation.dyaw = 3.075;
 
-        // Rotation values (roll, pitch, yaw)
-        float roll = 0.0;  // Convert roll to radians
-        float pitch = 0.0;  // Convert pitch to radians
-        float yaw = 1.57;  // Convert yaw to radians
+        // Calculate quaternion components
+        const double cy = cos(m_transformation.dyaw * 0.5);
+        const double sy = sin(m_transformation.dyaw * 0.5);
+        const double cp = cos(m_transformation.dpitch * 0.5);
+        const double sp = sin(m_transformation.dpitch * 0.5);
+        const double cr = cos(m_transformation.droll * 0.5);
+        const double sr = sin(m_transformation.droll * 0.5);
 
-        float cos_roll = cos(roll);
-        float sin_roll = sin(roll);
-        float cos_pitch = cos(pitch);
-        float sin_pitch = sin(pitch);
-        float cos_yaw = cos(yaw);
-        float sin_yaw = sin(yaw);
+        dquaternion.w = cy * cp * cr + sy * sp * sr;
+        dquaternion.x = cy * cp * sr - sy * sp * cr;
+        dquaternion.y = sy * cp * sr + cy * sp * cr;
+        dquaternion.z = sy * cp * cr - cy * sp * sr;
 
-        // Rotation matrix
-        host_transformation_matrix[3] = cos_yaw * cos_pitch;
-        host_transformation_matrix[4] = cos_yaw * sin_pitch * sin_roll - sin_yaw * cos_roll;
-        host_transformation_matrix[5] = cos_yaw * sin_pitch * cos_roll + sin_yaw * sin_roll;
-
-        host_transformation_matrix[6] = sin_yaw * cos_pitch;
-        host_transformation_matrix[7] = sin_yaw * sin_pitch * sin_roll + cos_yaw * cos_roll;
-        host_transformation_matrix[8] = sin_yaw * sin_pitch * cos_roll - cos_yaw * sin_roll;
-
-        host_transformation_matrix[9] = -sin_pitch;
-        host_transformation_matrix[10] = cos_pitch * sin_roll;
-        host_transformation_matrix[11] = cos_pitch * cos_roll;
-
-        host_transformation_matrix[12] = 0.0;
-        host_transformation_matrix[13] = 0.0;
-        host_transformation_matrix[14] = 0.0;
-        host_transformation_matrix[15] = 1.0;
+        transformed_objects_.resize(0);
     }
 
 private:
     ros::NodeHandle nh_;
     ros::Subscriber object_array_sub_;
     ros::Publisher transformed_array_pub_;
-    float* host_transformation_matrix;
 
+    Transformation m_transformation;
+    Quaternion dquaternion;
 
-    void objectArrayCallback(const autoware_msgs::DetectedObjectArray::ConstPtr& msg)
-    {
-        // Extract the detected objects from the received message
+    std::vector<autoware_msgs::DetectedObject> transformed_objects_;
+
+    void objectArrayCallback(const autoware_msgs::DetectedObjectArray::ConstPtr& msg) {
+        auto startTime = std::chrono::high_resolution_clock::now();
+
         const std::vector<autoware_msgs::DetectedObject>& objects = msg->objects;
         int object_size = objects.size();
 
@@ -124,8 +116,7 @@ private:
 
         // Launch the CUDA transformation kernel
         int num_threads = object_size;
-        cudaTransformObject<<<1, num_threads>>>(cuda_object_data, host_transformation_matrix, object_size);
-        cudaDeviceSynchronize();
+        cudaTransformObject<<<1, num_threads>>>(cuda_object_data, m_transformation, dquaternion, object_size);
 
         // Copy the transformed object data back to the host memory
         autoware_msgs::DetectedObject* transformed_objects;
@@ -133,12 +124,14 @@ private:
 
         cudaMemcpy(transformed_objects, cuda_object_data, object_size * sizeof(autoware_msgs::DetectedObject), cudaMemcpyDeviceToHost);
 
+        auto endTime = std::chrono::high_resolution_clock::now();
+        double transformation_time = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count() / 1000000.0;
+        std::cout << "transformation time: " << transformation_time << "\n";
+
         // Create and publish the transformed object array message
         autoware_msgs::DetectedObjectArray transformed_msg;
         transformed_msg.header = msg->header;
-        for (int i=0 ; i < object_size ; i++){
-            transformed_msg.objects.push_back(transformed_objects[i]);
-        }
+        thrust::copy(transformed_objects, transformed_objects + object_size, std::back_inserter(transformed_msg.objects));
         transformed_array_pub_.publish(transformed_msg);
 
         // Free device memory
@@ -146,8 +139,7 @@ private:
     }
 };
 
-int main(int argc, char** argv)
-{
+int main(int argc, char** argv) {
     ros::init(argc, argv, "object_transformer_node");
 
     ObjectTransformer transformer;
@@ -156,3 +148,4 @@ int main(int argc, char** argv)
 
     return 0;
 }
+
