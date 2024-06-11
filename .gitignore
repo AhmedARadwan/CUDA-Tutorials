@@ -1,4 +1,2 @@
-src/01-simple-add/build
-src/02-simple-transformation/devel
-src/02-simple-transformation/build
-src/03-thrust-sort/build
+devel/
+build/
